@@ -1,0 +1,13 @@
+{
+  "desiredResourceState": {
+    "Id": "cr-03b27b0d3be76935c",
+    "EndDateType": "limited",
+    "EndDate": "2022-08-31T23:59:59Z",
+    "InstanceCount": 1,
+    "AvailabilityZone": "us-east-1a",
+    "InstancePlatform": "Windows",
+    "InstanceType": "t3.medium"
+  },
+  "previousResourceState": {},
+  "logicalResourceIdentifier": "MyResource4"
+}
