@@ -35,7 +35,7 @@ public class ListHandler extends BaseHandlerStd {
         try {
             awsResponse = proxy.injectCredentialsAndInvokeV2(reservationsRequest, (proxyRequest) -> client.client().describeCapacityReservations(proxyRequest));
             nextToken = awsResponse.nextToken();
-            models = Translator.translateFromListRequest(awsResponse);
+            models = Translator.translateFromListResponse(awsResponse);
         } catch (Exception e) {
             throw new CfnGeneralServiceException(e.getMessage(), e);
         }
