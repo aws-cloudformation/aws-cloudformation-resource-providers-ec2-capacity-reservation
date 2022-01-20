@@ -1,0 +1,8 @@
+{
+  "desiredResourceState": {
+    "InstancePlatform": "Windows",
+    "InstanceType": "t3.medium"
+  },
+  "previousResourceState": {},
+  "logicalResourceIdentifier": "MyResource"
+}

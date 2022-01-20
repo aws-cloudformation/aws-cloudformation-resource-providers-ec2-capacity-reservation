@@ -1,0 +1,11 @@
+{
+  "desiredResourceState": {
+    "Id": "cr-03b27b0d3be76935c",
+    "InstanceCount": 1,
+    "AvailabilityZone": "us-east-1a",
+    "InstancePlatform": "Windows",
+    "InstanceType": "t3.medium"
+  },
+  "previousResourceState": {},
+  "logicalResourceIdentifier": "MyResource4"
+}

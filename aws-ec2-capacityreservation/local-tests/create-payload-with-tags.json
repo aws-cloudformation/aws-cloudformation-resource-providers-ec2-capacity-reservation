@@ -1,0 +1,21 @@
+{
+  "desiredResourceState": {
+    "InstanceCount": 1,
+    "AvailabilityZone": "us-east-1a",
+    "InstancePlatform": "Windows",
+    "InstanceType": "t3.medium",
+    "TagSpecifications": [
+      {
+        "ResourceType": "capacity-reservation",
+        "Tags": [
+          {
+            "Key": "CFN",
+            "Value": "CFN Uluru test"
+          }
+        ]
+      }
+    ]
+  },
+  "previousResourceState": {},
+  "logicalResourceIdentifier": "MyResource2"
+}
