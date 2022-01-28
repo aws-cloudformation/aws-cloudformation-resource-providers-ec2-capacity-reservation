@@ -1,11 +1,7 @@
 package software.amazon.ec2.capacityreservation;
 
-import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.ec2.Ec2Client;
-import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsResponse;
-import software.amazon.cloudformation.exceptions.CfnGeneralServiceException;
 import software.amazon.cloudformation.proxy.AmazonWebServicesClientProxy;
-import software.amazon.cloudformation.proxy.HandlerErrorCode;
 import software.amazon.cloudformation.proxy.Logger;
 import software.amazon.cloudformation.proxy.ProgressEvent;
 import software.amazon.cloudformation.proxy.ProxyClient;
@@ -33,8 +29,8 @@ public class ReadHandler extends BaseHandlerStd {
                 // STEP 3 [make an api call]
                 .makeServiceCall((describeCapacityReservationsRequest, ec2client) -> describeCapacityReservations(describeCapacityReservationsRequest, ec2client, logger))
                 // STEP 4 [Handle error]
-                .handleError((describeCapacityReservationsRequest, exception, ec2client, model, context) -> ProgressEvent.failed(model, context, HandlerErrorCode.InvalidRequest, exception.getMessage()))
+                .handleError((describeCapacityReservationsRequest, exception, ec2client, model, context) -> Translator.translateError(exception))
                 // STEP 5 [gather all properties of the resource]
-                .done(awsResponse -> ProgressEvent.defaultSuccessHandler(Translator.translateFromReadResponse(awsResponse)));
+                .done(awsResponse -> ProgressEvent.defaultSuccessHandler(Translator.translateFromReadResponse(awsResponse, logger)));
     }
 }

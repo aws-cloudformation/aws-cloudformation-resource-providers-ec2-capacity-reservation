@@ -1,17 +1,9 @@
-## My Project
+## CloudFormation Resource Provider Package For On Demand Capacity Reservation Service
 
-TODO: Fill this README out!
+On demand capacity reservation doc [link](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-capacity-reservations.html)
 
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
-
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+On demand capacity reservation cfn doc [link](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-capacityreservation.html)
 
 ## License
 
 This project is licensed under the Apache-2.0 License.
-

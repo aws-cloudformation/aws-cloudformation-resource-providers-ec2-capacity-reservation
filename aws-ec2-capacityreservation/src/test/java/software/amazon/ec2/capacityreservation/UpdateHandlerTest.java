@@ -1,6 +1,7 @@
 package software.amazon.ec2.capacityreservation;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,7 @@ import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsReq
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsResponse;
 import software.amazon.awssdk.services.ec2.model.ModifyCapacityReservationRequest;
 import software.amazon.awssdk.services.ec2.model.ModifyCapacityReservationResponse;
+import software.amazon.cloudformation.exceptions.CfnNotFoundException;
 import software.amazon.cloudformation.proxy.AmazonWebServicesClientProxy;
 import software.amazon.cloudformation.proxy.OperationStatus;
 import software.amazon.cloudformation.proxy.ProgressEvent;
@@ -50,12 +52,10 @@ public class UpdateHandlerTest extends AbstractTestBase {
 
     @AfterEach
     public void tear_down() {
-        verify(ec2Client, atLeastOnce()).serviceName();
-        verifyNoMoreInteractions(ec2Client);
     }
 
     @Test
-    public void handleRequest_SimpleSuccess() {
+    public void test_update_end_date() {
         final UpdateHandler handler = new UpdateHandler();
 
         final ResourceModel model = ResourceModel.builder()
@@ -78,8 +78,8 @@ public class UpdateHandlerTest extends AbstractTestBase {
 
 
         final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
-            .desiredResourceState(model)
-            .build();
+                .desiredResourceState(model)
+                .build();
 
         when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(describeResponse);
 
@@ -95,7 +95,62 @@ public class UpdateHandlerTest extends AbstractTestBase {
     }
 
     @Test
-    public void handle_ODCR_failure() {
+    public void test_update_instance_count() {
+        final UpdateHandler handler = new UpdateHandler();
+
+        final ResourceModel model = ResourceModel.builder()
+                .id("cr-121")
+                .instanceCount(3)
+                .build();
+
+        final CapacityReservation cr = CapacityReservation.builder()
+                .capacityReservationId("cr-121")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .state("Active")
+                .totalInstanceCount(3)
+                .build();
+
+        final DescribeCapacityReservationsResponse describeResponse = DescribeCapacityReservationsResponse.builder()
+                .capacityReservations(cr)
+                .build();
+
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(describeResponse);
+
+        final ModifyCapacityReservationResponse modifyResponse = ModifyCapacityReservationResponse.builder()
+                .returnValue(true)
+                .build();
+        when(ec2Client.modifyCapacityReservation(any(ModifyCapacityReservationRequest.class))).thenReturn(modifyResponse);
+
+        final ProgressEvent<ResourceModel, CallbackContext> response = handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(OperationStatus.SUCCESS);
+    }
+
+    @Test
+    public void test_updating_cr_without_crId() {
+        final UpdateHandler handler = new UpdateHandler();
+        final ResourceModel model = ResourceModel.builder()
+                .instanceCount(3)
+                .build();
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        Assertions.assertThrows(CfnNotFoundException.class, () -> {
+            handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+        });
+    }
+
+    @Test
+    public void handle_ODCR_exception() {
         final UpdateHandler handler = new UpdateHandler();
 
         final ResourceModel model = ResourceModel.builder()
@@ -106,6 +161,45 @@ public class UpdateHandlerTest extends AbstractTestBase {
 
         final CapacityReservation cr = CapacityReservation.builder()
                 .capacityReservationId("cr-121")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .state("Active")
+                .totalInstanceCount(1)
+                .build();
+
+        final DescribeCapacityReservationsResponse describeResponse = DescribeCapacityReservationsResponse.builder()
+                .capacityReservations(cr)
+                .build();
+
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(describeResponse);
+
+
+        final AwsServiceException serviceException = AwsServiceException.builder().message("serviceException").build();
+        when(ec2Client.modifyCapacityReservation(any(ModifyCapacityReservationRequest.class))).thenThrow(serviceException);
+
+        final ProgressEvent<ResourceModel, CallbackContext> response = handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(OperationStatus.FAILED);
+    }
+
+    @Test
+    public void handle_ODCR_returns_null_capacity_reservation_id() {
+        final UpdateHandler handler = new UpdateHandler();
+
+        final ResourceModel model = ResourceModel.builder()
+                .id("cr-121")
+                .endDateType("limited")
+                .endDate("2022-08-31T23:59:59Z")
+                .build();
+
+        final CapacityReservation cr = CapacityReservation.builder()
+                .capacityReservationId(null)
                 .availabilityZone("us-east-1a")
                 .instancePlatform("Windows")
                 .state("Active")

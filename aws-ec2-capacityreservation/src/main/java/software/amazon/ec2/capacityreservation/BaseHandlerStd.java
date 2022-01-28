@@ -1,10 +1,9 @@
 package software.amazon.ec2.capacityreservation;
 
-import com.amazonaws.AmazonClientException;
-import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsResponse;
+import software.amazon.cloudformation.exceptions.CfnNotFoundException;
 import software.amazon.cloudformation.proxy.AmazonWebServicesClientProxy;
 import software.amazon.cloudformation.proxy.Logger;
 import software.amazon.cloudformation.proxy.ProgressEvent;
@@ -39,17 +38,20 @@ public abstract class BaseHandlerStd extends BaseHandler<CallbackContext> {
   protected DescribeCapacityReservationsResponse describeCapacityReservations(
           final DescribeCapacityReservationsRequest describeRequest,
           final ProxyClient<Ec2Client> proxyClient,
-          final Logger logger
-          ) {
+          final Logger logger) {
     DescribeCapacityReservationsResponse reservationsResponse = null;
     try {
+      logger.log("[INFO] Reading capacity reservation");
       reservationsResponse = proxyClient.injectCredentialsAndInvokeV2(describeRequest,
               (proxyRequest) -> proxyClient.client().describeCapacityReservations(proxyRequest));
-
-      logger.log(String.format("%s has successfully been read.", ResourceModel.TYPE_NAME));
-    } catch (final AwsServiceException e){
+      logger.log(String.format("[INFO] Describe capacity reservation response %s", reservationsResponse));
+      //A read handler MUST return FAILED with a NotFound error code if the resource does not exist.
+      if (reservationsResponse.capacityReservations().get(0).state().toString().equalsIgnoreCase("cancelled")) {
+        throw new CfnNotFoundException(ResourceModel.TYPE_NAME, describeRequest.capacityReservationIds().get(0));
+      }
+    } catch (final Exception e) {
       logger.log("[ERROR] Error while describing capacity reservation");
-      throw new AmazonClientException(e.getMessage(), e);
+      throw e;
     }
     return reservationsResponse;
   }

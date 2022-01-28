@@ -1,6 +1,7 @@
 package software.amazon.ec2.capacityreservation;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,7 @@ import software.amazon.awssdk.services.ec2.model.CancelCapacityReservationRespon
 import software.amazon.awssdk.services.ec2.model.CapacityReservation;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsResponse;
+import software.amazon.cloudformation.exceptions.CfnNotFoundException;
 import software.amazon.cloudformation.proxy.AmazonWebServicesClientProxy;
 import software.amazon.cloudformation.proxy.OperationStatus;
 import software.amazon.cloudformation.proxy.ProgressEvent;
@@ -50,12 +52,10 @@ public class DeleteHandlerTest extends AbstractTestBase {
 
     @AfterEach
     public void tear_down() {
-        verify(ec2Client, atLeastOnce()).serviceName();
-        verifyNoMoreInteractions(ec2Client);
     }
 
     @Test
-    public void handleRequest_SimpleSuccess() {
+    public void test_simple_delete() {
         final DeleteHandler handler = new DeleteHandler();
 
         final ResourceModel model = ResourceModel.builder()
@@ -63,8 +63,8 @@ public class DeleteHandlerTest extends AbstractTestBase {
                 .build();
 
         final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
-            .desiredResourceState(model)
-            .build();
+                .desiredResourceState(model)
+                .build();
 
         final CapacityReservation cr = CapacityReservation.builder()
                 .capacityReservationId("cr-121")
@@ -90,6 +90,53 @@ public class DeleteHandlerTest extends AbstractTestBase {
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(OperationStatus.SUCCESS);
+    }
+
+    @Test
+    public void test_cancelled_cr_delete() {
+        final DeleteHandler handler = new DeleteHandler();
+
+        final ResourceModel model = ResourceModel.builder()
+                .id("cr-121")
+                .build();
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        final CapacityReservation cr = CapacityReservation.builder()
+                .capacityReservationId("cr-121")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .state("cancelled")
+                .totalInstanceCount(1)
+                .build();
+
+        final DescribeCapacityReservationsResponse describeResponse = DescribeCapacityReservationsResponse.builder()
+                .capacityReservations(cr)
+                .build();
+
+        when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(describeResponse);
+
+        Assertions.assertThrows(CfnNotFoundException.class, () -> {
+            handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+        });
+    }
+
+    @Test
+    public void test_delete_without_crId() {
+        final DeleteHandler handler = new DeleteHandler();
+
+        final ResourceModel model = ResourceModel.builder()
+                .build();
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        Assertions.assertThrows(CfnNotFoundException.class, () -> {
+            handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+        });
     }
 
     @Test
@@ -140,7 +187,8 @@ public class DeleteHandlerTest extends AbstractTestBase {
                 .desiredResourceState(model)
                 .build();
 
-        final AwsServiceException serviceException = AwsServiceException.builder().message("serviceException").build();;
+        final AwsServiceException serviceException = AwsServiceException.builder().message("serviceException").build();
+        ;
 
         when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenThrow(serviceException);
 
@@ -150,4 +198,6 @@ public class DeleteHandlerTest extends AbstractTestBase {
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(OperationStatus.FAILED);
     }
+
+
 }
