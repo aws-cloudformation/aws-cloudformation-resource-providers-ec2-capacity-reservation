@@ -1,6 +1,6 @@
 {
   "InstanceCount": 2,
-  "AvailabilityZone": "us-east-1a",
+  "AvailabilityZone": "{{ExportedAvailabilityZone}}",
   "InstancePlatform": "Windows",
   "InstanceType": "t3.medium"
 }
