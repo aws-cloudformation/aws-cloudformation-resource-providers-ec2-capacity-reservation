@@ -4,7 +4,6 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.CancelCapacityReservationResponse;
 import software.amazon.cloudformation.proxy.AmazonWebServicesClientProxy;
-import software.amazon.cloudformation.proxy.HandlerErrorCode;
 import software.amazon.cloudformation.proxy.Logger;
 import software.amazon.cloudformation.proxy.ProgressEvent;
 import software.amazon.cloudformation.proxy.ProxyClient;
@@ -33,7 +32,7 @@ public class DeleteHandler extends BaseHandlerStd {
                         proxy.initiate("AWS-EC2-CapacityReservation::Delete::PreDeletionCheck", proxyClient, progress.getResourceModel(), progress.getCallbackContext())
                                 .translateToServiceRequest(model -> Translator.translateToReadRequest(model, logger))
                                 .makeServiceCall((describeCapacityReservationsRequest, ec2client) -> describeCapacityReservations(describeCapacityReservationsRequest, ec2client, logger))
-                                .handleError((describeCapacityReservationsRequest, exception, ec2client, model, context) -> ProgressEvent.failed(model, context, HandlerErrorCode.InvalidRequest, exception.getMessage()))
+                                .handleError((describeCapacityReservationsRequest, exception, ec2client, model, context) -> Translator.translateError(exception))
                                 .progress()
                 )
 
@@ -59,17 +58,16 @@ public class DeleteHandler extends BaseHandlerStd {
                                 })
                                 // STEP 2.3 [Stabilize the resource, not really required for ODCR]
                                 .stabilize((cancelCapacityReservationRequest, cancelResponse, ec2client, model, context) -> {
-                                    // No stabilization code is required
                                     final boolean stabilized = true;
                                     logger.log(String.format("%s [%s] deletion has stabilized: %s", ResourceModel.TYPE_NAME, model.getPrimaryIdentifier(), stabilized));
                                     logger.log(String.format(" Returned value %s", cancelResponse.returnValue()));
                                     return stabilized;
                                 })
                                 // STEP 2.4 [Handle error]
-                                .handleError((cancelCapacityReservationRequest, exception, ec2client, model, context) -> ProgressEvent.defaultFailureHandler(exception, HandlerErrorCode.GeneralServiceException))
+                                .handleError((cancelCapacityReservationRequest, exception, ec2client, model, context) -> Translator.translateError(exception))
                                 .progress()
                 )
                 // STEP 3 [return the successful progress event without resource model]
-                .then(progress -> ProgressEvent.success(progress.getResourceModel(), callbackContext));
+                .then(progress -> ProgressEvent.success(null, callbackContext));
     }
 }

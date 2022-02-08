@@ -1,5 +1,6 @@
 package software.amazon.ec2.capacityreservation;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,6 +11,7 @@ import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.CapacityReservation;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsResponse;
+import software.amazon.cloudformation.exceptions.CfnNotFoundException;
 import software.amazon.cloudformation.proxy.AmazonWebServicesClientProxy;
 import software.amazon.cloudformation.proxy.OperationStatus;
 import software.amazon.cloudformation.proxy.ProgressEvent;
@@ -43,7 +45,7 @@ public class ReadHandlerTest extends AbstractTestBase {
     }
 
     @Test
-    public void handleRequest_SimpleSuccess() {
+    public void test_simple_describe() {
         final ReadHandler handler = new ReadHandler();
 
         final ResourceModel model = ResourceModel.builder()
@@ -75,7 +77,7 @@ public class ReadHandlerTest extends AbstractTestBase {
     }
 
     @Test
-    public void handle_non_existing_odcr() {
+    public void test_describing_non_existing_cr() {
         final ReadHandler handler = new ReadHandler();
 
         final ResourceModel model = ResourceModel.builder()
@@ -94,5 +96,35 @@ public class ReadHandlerTest extends AbstractTestBase {
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(OperationStatus.FAILED);
+    }
+
+    @Test
+    public void test_reading_cancelled_cr() {
+        final ReadHandler handler = new ReadHandler();
+
+        final ResourceModel model = ResourceModel.builder()
+                .id("cr-101")
+                .build();
+        final CapacityReservation cr = CapacityReservation.builder()
+                .capacityReservationId("cr-121")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .state("cancelled")
+                .totalInstanceCount(1)
+                .build();
+
+        final DescribeCapacityReservationsResponse describeResponse = DescribeCapacityReservationsResponse.builder()
+                .capacityReservations(cr)
+                .build();
+
+        when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(describeResponse);
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        Assertions.assertThrows(CfnNotFoundException.class, () -> {
+            handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+        });
     }
 }

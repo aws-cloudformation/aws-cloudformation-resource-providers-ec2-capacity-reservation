@@ -1,0 +1,6 @@
+{
+  "InstanceCount": 1,
+  "AvailabilityZone": "us-east-1a",
+  "InstancePlatform": "Windows",
+  "InstanceType": "t3.medium"
+}

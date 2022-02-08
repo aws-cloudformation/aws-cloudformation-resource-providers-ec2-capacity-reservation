@@ -4,8 +4,8 @@ Description: AWS SAM template for the AWS::EC2::CapacityReservation resource typ
 
 Globals:
   Function:
-    Timeout: 280  # docker start-up times can be long for SAM CLI
-    MemorySize: 512
+    Timeout: 300  # docker start-up times can be long for SAM CLI
+    MemorySize: 1024
 
 Resources:
   TypeFunction:

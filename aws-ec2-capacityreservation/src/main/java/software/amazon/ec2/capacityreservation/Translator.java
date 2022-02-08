@@ -1,18 +1,22 @@
 package software.amazon.ec2.capacityreservation;
 
+import lombok.SneakyThrows;
 import software.amazon.awssdk.awscore.AwsRequest;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.ec2.model.CancelCapacityReservationRequest;
 import software.amazon.awssdk.services.ec2.model.CapacityReservation;
 import software.amazon.awssdk.services.ec2.model.CreateCapacityReservationRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeCapacityReservationsResponse;
 import software.amazon.awssdk.services.ec2.model.ModifyCapacityReservationRequest;
-import software.amazon.awssdk.services.ec2.model.Tag;
-import software.amazon.awssdk.services.ec2.model.TagSpecification;
+import software.amazon.awssdk.services.ec2.model.ResourceType;
 import software.amazon.cloudformation.exceptions.CfnNotFoundException;
+import software.amazon.cloudformation.proxy.HandlerErrorCode;
 import software.amazon.cloudformation.proxy.Logger;
+import software.amazon.cloudformation.proxy.ProgressEvent;
 import software.amazon.cloudformation.proxy.ResourceHandlerRequest;
 
+import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,7 +36,6 @@ import java.util.stream.Stream;
 
 public class Translator {
 
-  public final static String RESOURCE_TYPE_CAPACITY_RESERVATION = "capacity-reservation";
   /**
    * Request to create a resource
    * @param model resource model
@@ -43,36 +46,43 @@ public class Translator {
   static CreateCapacityReservationRequest translateToCreateRequest(final ResourceModel model,
                                                                    final ResourceHandlerRequest<ResourceModel> handlerRequest,
                                                                    final Logger logger) {
-    final CreateCapacityReservationRequest.Builder builder = CreateCapacityReservationRequest.builder()
-            .availabilityZone(model.getAvailabilityZone())
-            .clientToken(handlerRequest.getClientRequestToken())
-            .ebsOptimized(model.getEbsOptimized())
-            .endDate(getEndDate(model.getEndDate()))
-            .endDateType(model.getEndDateType())
-            .ephemeralStorage(model.getEphemeralStorage())
-            .instanceCount(model.getInstanceCount())
-            .instanceMatchCriteria(model.getInstanceMatchCriteria())
-            .instancePlatform(model.getInstancePlatform())
-            .tenancy(model.getTenancy())
-            .instanceType(model.getInstanceType());
+      final CreateCapacityReservationRequest.Builder builder = CreateCapacityReservationRequest.builder()
+              .availabilityZone(model.getAvailabilityZone())
+              .clientToken(handlerRequest.getClientRequestToken())
+              .ebsOptimized(model.getEbsOptimized())
+              .endDate(getEndDate(model.getEndDate(), logger))
+              .endDateType(model.getEndDateType())
+              .ephemeralStorage(model.getEphemeralStorage())
+              .instanceCount(model.getInstanceCount())
+              .instanceMatchCriteria(model.getInstanceMatchCriteria())
+              .instancePlatform(model.getInstancePlatform())
+              .tenancy(model.getTenancy())
+              .instanceType(model.getInstanceType())
+              .placementGroupArn(model.getPlacementGroupArn())
+              .outpostArn(model.getOutPostArn());
 
-    //TODO Get tags from resource model and inject into the request
-  /*  final List<TagSpecification> tags = consolidateTags(handlerRequest, model, logger);
-    if (!tags.isEmpty()) {
-      builder.tagSpecifications(tags);
-    }*/
-
-    //TODO Add following attribute after fixing sdk issue (Currently latest SDKs are throwing exceptions)
-    //.placementGroup.(model.getPlacementGroupArn())
-    //.outpostArn(model.getOutPostArn())
-    return builder.build();
+      final List<software.amazon.awssdk.services.ec2.model.TagSpecification> tags = consolidateTags(handlerRequest, model, logger);
+      if (tags != null && tags.size() > 0) {
+        builder.tagSpecifications(tags);
+      }
+      return builder.build();
   }
 
-  private static Instant getEndDate(String endDate) {
+  @SneakyThrows
+  private static Instant getEndDate(final String endDate, final Logger logger) {
     if (endDate == null) {
       return null;
     }
-    return Instant.parse(endDate);
+    try {
+      return Instant.parse(endDate);
+    } catch (Exception e) {
+      logger.log(String.format("Instance parse failed with %s", e));
+
+    }
+    //This is for backward compatibility
+    logger.log(String.format("Parsing the date using SimpleDateFormat [E MMM dd HH:mm:ss z yyyy]"));
+    SimpleDateFormat oldDateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss z yyyy");
+    return oldDateFormat.parse(endDate).toInstant();
   }
 
   /**
@@ -87,7 +97,9 @@ public class Translator {
       logger.log("Capacity reservation ID is null throwing exception");
       throw new CfnNotFoundException(ResourceModel.TYPE_NAME, null);
     }
-    return DescribeCapacityReservationsRequest.builder().capacityReservationIds(crID).build();
+    return DescribeCapacityReservationsRequest.builder()
+            .capacityReservationIds(crID)
+            .build();
   }
 
   /**
@@ -95,7 +107,7 @@ public class Translator {
    * @param reservationsResponse the aws service describe resource response
    * @return model resource model
    */
-  static ResourceModel translateFromReadResponse(final DescribeCapacityReservationsResponse reservationsResponse) {
+  static ResourceModel translateFromReadResponse(final DescribeCapacityReservationsResponse reservationsResponse, final Logger logger) {
     final CapacityReservation cr = reservationsResponse.capacityReservations().get(0);
     final ResourceModel.ResourceModelBuilder builder = ResourceModel.builder();
     builder.id(cr.capacityReservationId())
@@ -103,13 +115,15 @@ public class Translator {
             .availableInstanceCount(cr.availableInstanceCount())
             .ebsOptimized(cr.ebsOptimized())
             .endDate(String.valueOf(cr.endDate()))
-            .endDateType(String.valueOf(cr.endDateType()))
+            .endDateType(cr.endDateTypeAsString())
             .ephemeralStorage(cr.ephemeralStorage())
             .instanceCount(cr.totalInstanceCount())
             .instanceMatchCriteria(cr.instanceMatchCriteriaAsString())
-            .instancePlatform(String.valueOf(cr.instancePlatform()))
+            .instancePlatform(cr.instancePlatformAsString())
             .instanceType(cr.instanceType())
             .tenancy(cr.tenancyAsString())
+            .placementGroupArn(cr.placementGroupArn())
+            .outPostArn(cr.outpostArn())
             .build();
     final ResourceModel model = builder.build();
     return model;
@@ -149,7 +163,7 @@ public class Translator {
     final ModifyCapacityReservationRequest.Builder request = ModifyCapacityReservationRequest.builder()
             .capacityReservationId(crID);
     if (model.getEndDate() != null) {
-      request.endDate(getEndDate(model.getEndDate()));
+      request.endDate(getEndDate(model.getEndDate(), logger));
     }
     if (model.getEndDateType() != null) {
       request.endDateType(model.getEndDateType());
@@ -178,12 +192,26 @@ public class Translator {
    */
   static List<ResourceModel> translateFromListResponse(final DescribeCapacityReservationsResponse awsResponse) {
     // e.g. https://github.com/aws-cloudformation/aws-cloudformation-resource-providers-logs/blob/2077c92299aeb9a68ae8f4418b5e932b12a8b186/aws-logs-loggroup/src/main/java/com/aws/logs/loggroup/Translator.java#L75-L82
-    return streamOfOrEmpty(awsResponse.capacityReservations())
+    return streamOfOrEmpty(awsResponse.capacityReservations()).filter(capacityReservation -> !capacityReservation.state().toString().equalsIgnoreCase("cancelled"))
             .map(resource -> ResourceModel.builder()
                     // include only primary identifier
                     .id(resource.capacityReservationId())
                     .build())
             .collect(Collectors.toList());
+  }
+
+  static ProgressEvent<ResourceModel, CallbackContext> translateError(final Exception ex) {
+    if (ex instanceof CfnNotFoundException) {
+      return ProgressEvent.defaultFailureHandler(ex, HandlerErrorCode.NotFound);
+    } else if (ex instanceof AwsServiceException) {
+      final AwsServiceException serviceException = (AwsServiceException) ex;
+      if (serviceException.statusCode() == 500) {
+        return ProgressEvent.defaultFailureHandler(ex, HandlerErrorCode.ServiceInternalError);
+      } else if (serviceException.statusCode() == 400) {
+        return ProgressEvent.defaultFailureHandler(ex, HandlerErrorCode.InvalidRequest);
+      }
+    }
+    return ProgressEvent.defaultFailureHandler(ex, HandlerErrorCode.GeneralServiceException);
   }
 
   private static <T> Stream<T> streamOfOrEmpty(final Collection<T> collection) {
@@ -192,39 +220,16 @@ public class Translator {
             .orElseGet(Stream::empty);
   }
 
-  /**
-   * Request to add tags to a resource
-   * @param model resource model
-   * @return awsRequest the aws service request to create a resource
-   */
-  static AwsRequest tagResourceRequest(final ResourceModel model, final Map<String, String> addedTags) {
-    final AwsRequest awsRequest = null;
-    // TODO: construct a request
-    // e.g. https://github.com/aws-cloudformation/aws-cloudformation-resource-providers-logs/blob/2077c92299aeb9a68ae8f4418b5e932b12a8b186/aws-logs-loggroup/src/main/java/com/aws/logs/loggroup/Translator.java#L39-L43
-    return awsRequest;
-  }
+  private static List<software.amazon.awssdk.services.ec2.model.TagSpecification> consolidateTags(final ResourceHandlerRequest<ResourceModel> handlerRequest,
+                                                                                                  final ResourceModel model,
+                                                                                                  final Logger logger) {
+    final List<software.amazon.awssdk.services.ec2.model.Tag> tags = new ArrayList<>();
+    final List<software.amazon.awssdk.services.ec2.model.TagSpecification> crTagSpecs = new ArrayList<>();
 
-  /**
-   * Request to add tags to a resource
-   * @param model resource model
-   * @return awsRequest the aws service request to create a resource
-   */
-  static AwsRequest untagResourceRequest(final ResourceModel model, final Set<String> removedTags) {
-    final AwsRequest awsRequest = null;
-    // TODO: construct a request
-    // e.g. https://github.com/aws-cloudformation/aws-cloudformation-resource-providers-logs/blob/2077c92299aeb9a68ae8f4418b5e932b12a8b186/aws-logs-loggroup/src/main/java/com/aws/logs/loggroup/Translator.java#L39-L43
-    return awsRequest;
-  }
-
-  private static List<TagSpecification> consolidateTags(final ResourceHandlerRequest<ResourceModel> handlerRequest,
-                                                        final ResourceModel model,
-                                                        final Logger logger) {
-    final List<Tag> tags = new ArrayList<>();
-    final List<TagSpecification> crTagSpecification = new ArrayList<>();
     // Get stack-level tags from CFN
     if (handlerRequest.getDesiredResourceTags() != null) {
       handlerRequest.getDesiredResourceTags().forEach((key, value) -> {
-        Tag tag = Tag.builder()
+        software.amazon.awssdk.services.ec2.model.Tag tag = software.amazon.awssdk.services.ec2.model.Tag.builder()
                 .key(key)
                 .value(value)
                 .build();
@@ -232,7 +237,7 @@ public class Translator {
       });
     }
 
-     /* Get CFN system tags https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-resource-tags.html
+    /* Get CFN system tags https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-resource-tags.html
       aws:cloudformation:logical-id
       aws:cloudformation:stack-id
       aws:cloudformation:stack-name
@@ -249,19 +254,40 @@ public class Translator {
 
     if (tags.isEmpty()) {
       logger.log("No stack-level tags and system tags for CFN");
-    } else {
-      logger.log("CFN stack-level and system tags : " + tags);
-      crTagSpecification.add(TagSpecification.builder().resourceType(RESOURCE_TYPE_CAPACITY_RESERVATION).tags(tags).build());
     }
 
-    //get user-provided tags
+
+    // Get user-provided tags
     if (model.getTagSpecifications() != null && model.getTagSpecifications().size() > 0) {
-      crTagSpecification.addAll(model.getTagSpecifications().stream()
-              .map(spec -> TagSpecification.builder().resourceType(spec.getResourceType()).tags(spec.getTags().stream()
-                      .map(tag -> Tag.builder().key(tag.getKey()).value(tag.getValue()).build())
-                      .collect(Collectors.toList())).build()).collect(Collectors.toList()));
+
+      for(TagSpecification tagSpecification : model.getTagSpecifications()){
+        if(tagSpecification.getResourceType().equalsIgnoreCase("capacity-reservation")){
+          tags.addAll(tagSpecification.getTags().stream().map(tag -> software.amazon.awssdk.services.ec2.model.Tag.builder()
+                  .key(tag.getKey())
+                  .value(tag.getValue())
+                  .build()).collect(Collectors.toList()));
+        } else{
+          crTagSpecs.add(software.amazon.awssdk.services.ec2.model.TagSpecification.builder()
+                  .resourceType(tagSpecification.getResourceType())
+                  .tags(tagSpecification.getTags().stream().map(tag -> software.amazon.awssdk.services.ec2.model.Tag.builder()
+                          .key(tag.getKey())
+                          .value(tag.getValue())
+                          .build()).collect(Collectors.toList()))
+                  .build());
+        }
+      }
     }
-    logger.log("TagSpecifications to add : " + crTagSpecification);
-    return crTagSpecification;
+    if(tags.isEmpty()){
+      return crTagSpecs;
+    }
+
+    //Add resource tags
+    crTagSpecs.add(software.amazon.awssdk.services.ec2.model.TagSpecification.builder()
+            .resourceType(ResourceType.CAPACITY_RESERVATION)
+            .tags(tags)
+            .build());
+
+    logger.log("TagSpecifications to add : " + crTagSpecs);
+    return crTagSpecs;
   }
 }

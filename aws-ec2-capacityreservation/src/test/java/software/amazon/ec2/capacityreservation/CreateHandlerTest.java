@@ -64,7 +64,7 @@ public class CreateHandlerTest extends AbstractTestBase {
                 .capacityReservationId("cr-121")
                 .availabilityZone("us-east-1a")
                 .instancePlatform("Windows")
-                .state("Active")
+                .state("active")
                 .totalInstanceCount(1)
                 .build();
         final CreateCapacityReservationResponse createResponse = CreateCapacityReservationResponse.builder()
@@ -87,7 +87,7 @@ public class CreateHandlerTest extends AbstractTestBase {
     }
 
     @Test
-    public void create_handle_request_with_Tags() {
+    public void create_CR_with_end_date() {
         final CreateHandler handler = new CreateHandler();
 
         final ResourceModel model = ResourceModel.builder()
@@ -95,9 +95,8 @@ public class CreateHandlerTest extends AbstractTestBase {
                 .availabilityZone("us-east-1a")
                 .instancePlatform("Windows")
                 .instanceCount(1)
-                .tagSpecifications(Arrays.asList(TagSpecification.builder().tags(Arrays.asList(
-                        Tag.builder().key("TestKey").value("TestValue").build()
-                )).build()))
+                .endDateType("limited")
+                .endDate("2124-08-31T23:59:59Z")
                 .build();
 
         final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
@@ -108,7 +107,104 @@ public class CreateHandlerTest extends AbstractTestBase {
                 .capacityReservationId("cr-121")
                 .availabilityZone("us-east-1a")
                 .instancePlatform("Windows")
-                .state("Active")
+                .state("active")
+                .totalInstanceCount(1)
+                .build();
+        final CreateCapacityReservationResponse createResponse = CreateCapacityReservationResponse.builder()
+                .capacityReservation(cr).build();
+
+        when(ec2Client.createCapacityReservation(any(CreateCapacityReservationRequest.class))).thenReturn(createResponse);
+        final DescribeCapacityReservationsResponse reservationsResponse = DescribeCapacityReservationsResponse.builder()
+                .capacityReservations(cr)
+                .build();
+
+        when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(reservationsResponse);
+
+        final ProgressEvent<ResourceModel, CallbackContext> response = handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(OperationStatus.SUCCESS);
+        assertThat(cr.capacityReservationId()).isEqualTo(response.getResourceModel().getId());
+        assertThat(cr.availabilityZone()).isEqualTo(response.getResourceModel().getAvailabilityZone());
+        assertThat(cr.instanceType()).isEqualTo(response.getResourceModel().getInstanceType());
+        assertThat(cr.endDateType()).isEqualTo(response.getResourceModel().getEndDateType());
+    }
+
+    @Test
+    public void create_CR_with_end_date_backwards_compatible() {
+        final CreateHandler handler = new CreateHandler();
+        final ResourceModel model = ResourceModel.builder()
+                .instanceType("t2.micro")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .instanceCount(1)
+                .endDateType("limited")
+                .endDate("Fri Jan 01 00:00:00 GMT 2100")
+                .build();
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        final CapacityReservation cr = CapacityReservation.builder()
+                .capacityReservationId("cr-121")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .state("active")
+                .totalInstanceCount(1)
+                .build();
+        final CreateCapacityReservationResponse createResponse = CreateCapacityReservationResponse.builder()
+                .capacityReservation(cr).build();
+
+        when(ec2Client.createCapacityReservation(any(CreateCapacityReservationRequest.class))).thenReturn(createResponse);
+        final DescribeCapacityReservationsResponse reservationsResponse = DescribeCapacityReservationsResponse.builder()
+                .capacityReservations(cr)
+                .build();
+
+        when(ec2Client.describeCapacityReservations(any(DescribeCapacityReservationsRequest.class))).thenReturn(reservationsResponse);
+
+        final ProgressEvent<ResourceModel, CallbackContext> response = handler.handleRequest(proxy, request, new CallbackContext(), proxyClient, logger);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(OperationStatus.SUCCESS);
+        assertThat(cr.capacityReservationId()).isEqualTo(response.getResourceModel().getId());
+        assertThat(cr.availabilityZone()).isEqualTo(response.getResourceModel().getAvailabilityZone());
+        assertThat(cr.instanceType()).isEqualTo(response.getResourceModel().getInstanceType());
+        assertThat(cr.endDateType()).isEqualTo(response.getResourceModel().getEndDateType());
+    }
+
+    @Test
+    public void create_handle_request_with_Tags() {
+        final CreateHandler handler = new CreateHandler();
+
+        final ResourceModel model = ResourceModel.builder()
+                .instanceType("t2.micro")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .instanceCount(1)
+                .tagSpecifications(Arrays.asList(TagSpecification.builder()
+                                .tags(Arrays.asList(Tag.builder()
+                                        .key("TestKey")
+                                        .value("TestValue").build()
+                                ))
+                                .resourceType("capacity-reservation").build(),
+                        TagSpecification.builder()
+                                .tags(Arrays.asList(Tag.builder()
+                                        .key("TestKey2")
+                                        .value("TestValue2").build()
+                                ))
+                                .resourceType("ec2-instance").build()))
+                .build();
+
+        final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
+                .desiredResourceState(model)
+                .build();
+
+        final CapacityReservation cr = CapacityReservation.builder()
+                .capacityReservationId("cr-121")
+                .availabilityZone("us-east-1a")
+                .instancePlatform("Windows")
+                .state("active")
                 .totalInstanceCount(1)
                 .build();
         final CreateCapacityReservationResponse createResponse = CreateCapacityReservationResponse.builder()
@@ -139,9 +235,12 @@ public class CreateHandlerTest extends AbstractTestBase {
                 .availabilityZone("us-east-1a")
                 .instancePlatform("Windows")
                 .instanceCount(1)
-                .tagSpecifications(Arrays.asList(TagSpecification.builder().tags(Arrays.asList(
-                        Tag.builder().key("TestKey").value("TestValue").build()
-                )).build()))
+                .tagSpecifications(Arrays.asList(TagSpecification.builder()
+                        .tags(Arrays.asList(Tag.builder()
+                                .key("TestKey")
+                                .value("TestValue").build()
+                        ))
+                        .resourceType("capacity-reservation").build()))
                 .build();
 
         final ResourceHandlerRequest<ResourceModel> request = ResourceHandlerRequest.<ResourceModel>builder()
