@@ -1,7 +1,6 @@
 package software.amazon.ec2.capacityreservation;
 
 import lombok.SneakyThrows;
-import software.amazon.awssdk.awscore.AwsRequest;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.ec2.model.CancelCapacityReservationRequest;
 import software.amazon.awssdk.services.ec2.model.CapacityReservation;
@@ -19,11 +18,10 @@ import software.amazon.cloudformation.proxy.ResourceHandlerRequest;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -35,6 +33,8 @@ import java.util.stream.Stream;
  */
 
 public class Translator {
+
+  private static final String CR_RESOURCE_TYPE = "capacity-reservation";
 
   /**
    * Request to create a resource
@@ -73,16 +73,21 @@ public class Translator {
     if (endDate == null) {
       return null;
     }
+
     try {
       return Instant.parse(endDate);
     } catch (Exception e) {
       logger.log(String.format("Instance parse failed with %s", e));
-
     }
+
     //This is for backward compatibility
-    logger.log(String.format("Parsing the date using SimpleDateFormat [E MMM dd HH:mm:ss z yyyy]"));
-    SimpleDateFormat oldDateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss z yyyy");
-    return oldDateFormat.parse(endDate).toInstant();
+    try {
+      logger.log(String.format("Parsing the date using SimpleDateFormat [E MMM dd HH:mm:ss z yyyy]"));
+      SimpleDateFormat oldDateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss z yyyy");
+      return oldDateFormat.parse(endDate).toInstant();
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   /**
@@ -109,6 +114,10 @@ public class Translator {
    */
   static ResourceModel translateFromReadResponse(final DescribeCapacityReservationsResponse reservationsResponse, final Logger logger) {
     final CapacityReservation cr = reservationsResponse.capacityReservations().get(0);
+    final List<Tag> tags = cr.tags().stream().map(tag -> Tag.builder()
+            .key(tag.key())
+            .value(tag.value())
+            .build()).collect(Collectors.toList());
     final ResourceModel.ResourceModelBuilder builder = ResourceModel.builder();
     builder.id(cr.capacityReservationId())
             .availabilityZone(cr.availabilityZone())
@@ -117,13 +126,15 @@ public class Translator {
             .endDate(String.valueOf(cr.endDate()))
             .endDateType(cr.endDateTypeAsString())
             .ephemeralStorage(cr.ephemeralStorage())
-            .instanceCount(cr.totalInstanceCount())
+            .totalInstanceCount(cr.totalInstanceCount())
             .instanceMatchCriteria(cr.instanceMatchCriteriaAsString())
             .instancePlatform(cr.instancePlatformAsString())
             .instanceType(cr.instanceType())
             .tenancy(cr.tenancyAsString())
             .placementGroupArn(cr.placementGroupArn())
             .outPostArn(cr.outpostArn())
+            .tagSpecifications(Arrays.asList(TagSpecification.builder()
+                    .resourceType(CR_RESOURCE_TYPE).tags(tags).build()))
             .build();
     final ResourceModel model = builder.build();
     return model;
@@ -261,7 +272,7 @@ public class Translator {
     if (model.getTagSpecifications() != null && model.getTagSpecifications().size() > 0) {
 
       for(TagSpecification tagSpecification : model.getTagSpecifications()){
-        if(tagSpecification.getResourceType().equalsIgnoreCase("capacity-reservation")){
+        if(tagSpecification.getResourceType().equalsIgnoreCase(CR_RESOURCE_TYPE)){
           tags.addAll(tagSpecification.getTags().stream().map(tag -> software.amazon.awssdk.services.ec2.model.Tag.builder()
                   .key(tag.getKey())
                   .value(tag.getValue())
